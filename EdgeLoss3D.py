@@ -27,15 +27,15 @@ def get_gaussian_kernel3D(k=3, mu=0, sigma=1, normalize=True):
     return gaussian_3D
 
 
-def get_sobel_kernel3D():
-    Sx = np.asarray([[[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],[[-2, 0, 2], [-4, 0, 4], [-2, 0, 2]],[[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]])
-    Sy = np.asarray([[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],[[-2, -4, -2], [0, 0, 0], [2, 4, 2]],[[-1, -2, -1], [0, 0, 0], [1, 2, 1]]])
-    Sz = np.asarray([[[-1, -2, -1], [-2, -4, -2], [-1, -2, -1]],[[0, 0, 0], [0, 0, 0], [0, 0, 0]],[[1, 2, 1], [2, 4, 2], [1, 2, 1]]])
+def get_sobel_kernel3D(n1=1,n2=2,n3=2):
+    Sx = np.asarray([[[-n1, 0, n1], [-n2, 0, n2], [-n1, 0, n1]],[[-n2, 0, n2], [-n3*n2, 0, n3*n2], [-n2, 0, n2]],[[-n1, 0, n1], [-n2, 0, n2], [-n1, 0, n1]]])
+    Sy = np.asarray([[[-n1, -n2, -n1], [0, 0, 0], [n1, n2, n1]],[[-n2, -n3*n2, -n2], [0, 0, 0], [n2, n3*n2, n2]],[[-n1, -n2, -n1], [0, 0, 0], [n1, n2, n1]]])
+    Sz = np.asarray([[[-n1, -n2, -n1], [-n2, -n3*n2, -n2], [-n1, -n2, -n1]],[[0, 0, 0], [0, 0, 0], [0, 0, 0]],[[n1, n2, n1], [n2, n3*n2, n2], [n1, n2, n1]]])
     return Sx, Sy, Sz
 
 
 class GradEdge3D():
-    def __init__(self,k_gaussian=3,mu=0,sigma=1,device='cpu'):
+    def __init__(self,k_gaussian=3,mu=0,sigma=1,n1=1,n2=2,n3=2,device='cpu'):
         super(GradEdge3D, self).__init__()
         self.device = device
 
@@ -46,7 +46,7 @@ class GradEdge3D():
         self.gaussian_filter = self.gaussian_filter.to(device)
         
         k_sobel = 3
-        Sx, Sy, Sz = get_sobel_kernel3D()
+        Sx, Sy, Sz = get_sobel_kernel3D(n1,n2,n3)
         self.sobel_filter_x = nn.Conv3d(in_channels=1,out_channels=1,stride = 1,kernel_size=k_sobel,padding=k_sobel // 2,bias=False)
         self.sobel_filter_x.weight.data=torch.from_numpy(Sx.astype(np.float32)).reshape(1,1,k_sobel,k_sobel,k_sobel)
 
@@ -84,14 +84,19 @@ class GradEdge3D():
     
 
 class GMELoss3D():
-    def __init__(self, criterion=nn.MSELoss(), k_gaussian=3, mu=0, sigma=1, k_sobel=3, device='cpu'):
+    def __init__(self, criterion=nn.MSELoss(), k_gaussian=3, mu=0, sigma=1, n1=1, n2=2, n3=2, device='cpu'):
         super(GMELoss3D, self).__init__()
-        self.edge_filter = GradEdge3D(k_gaussian, mu, sigma, device)
+        self.edge_filter = GradEdge3D(k_gaussian, mu, sigma, n1, n2, n3, device)
         self.criterion = criterion        
 
-    def compute(self, y, yp):
-        _,_,_,_,y_edge,_,_ = self.edge_filter.detect(y)
-        _,_,_,_,yp_edge,_,_ = self.edge_filter.detect(yp)
+    def compute(self, y, yp, low_threshold=None, high_threshold=None):
+        if low_threshold is None and high_threshold is None:
+            _,_,_,_,y_edge,_,_ = self.edge_filter.detect(y)
+            _,_,_,_,yp_edge,_,_ = self.edge_filter.detect(yp)
+        else:
+            _,_,_,_,_,y_edge,_ = self.edge_filter.detect(y,low_threshold,high_threshold)
+            _,_,_,_,_,yp_edge,_,_ = self.edge_filter.detect(yp,low_threshold,high_threshold)
+            
         error = self.criterion(y_edge, yp_edge)
         return error
     
@@ -99,11 +104,12 @@ class GMELoss3D():
 if __name__ == "__main__":  
     import matplotlib.pyplot as plt 
     loss = GMELoss3D()
-    filter_ = GradEdge3D()
+    filter_ = GradEdge3D(k_gaussian=3,mu=0,sigma=1,n1=1,n2=2,n3=2)
     for k in range(1,5):
-        data = np.load('/brats/data/img (%d).pkl'%(k),allow_pickle=True)
+        path = 'R:/img (%d).pkl'%(k)#'/brats/data/img (%d).pkl'%(k
+        data = np.load(path,allow_pickle=True)
         x = torch.from_numpy(data[0]).view(1,1,data[0].shape[0],data[0].shape[1],data[0].shape[2]).to(dtype=torch.float)
-        Y = filter_.detect(x,low_threshold=0.05,high_threshold=0.1)
+        Y = filter_.detect(x,low_threshold=0.05,high_threshold=0.15)
         titles = ['blurred', 'grad_x', 'grad_y', 'grad_z', 'grad_magnitude', 'cleaned_grad_mag','mask']
         for j in range(0,155,20):
             for i,y in enumerate(Y):
@@ -118,4 +124,3 @@ if __name__ == "__main__":
                 plt.imshow(y[:,:,:,:,j].squeeze().cpu().detach().numpy().T,cmap = cmap)
                 plt.title(titles[i] + ' slice%d'%(j))
                 plt.show()
-        print('sample_loss = ',loss.compute(torch.from_numpy(data[1]).view(1,1,data[0].shape[0],data[0].shape[1],data[0].shape[2]).to(dtype=torch.float),x))
