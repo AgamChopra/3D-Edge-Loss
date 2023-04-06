@@ -112,11 +112,13 @@ class GradEdge3D():
             grad_d4.append(self.sobel_filter_d4(img[:, c:c+1]))
             grad_d5.append(self.sobel_filter_d5(img[:, c:c+1]))
             grad_d6.append(self.sobel_filter_d6(img[:, c:c+1]))
+            
+        grad_x, grad_y, grad_z, grad_d1, grad_d2, grad_d3, grad_d4, grad_d5, grad_d6 = torch.cat(grad_x,dim = 1), torch.cat(grad_y, dim=1), torch.cat(grad_z, dim=1), torch.cat(grad_d1, dim=1), torch.cat(grad_d2, dim=1), torch.cat(grad_d3, dim=1), torch.cat(grad_d4, dim=1), torch.cat(grad_d5, dim=1), torch.cat(grad_d6, dim=1)
 
         grad_magnitude = (1 / C) * (((torch.sum(grad_x, dim=1)) ** 2 + (torch.sum(grad_y, dim=1)) ** 2 + (torch.sum(grad_z, dim=1)) ** 2 + (torch.sum(grad_d1, dim=1)) ** 2 + (torch.sum(
             grad_d2, dim=1)) ** 2 + (torch.sum(grad_d3, dim=1)) ** 2 + (torch.sum(grad_d4, dim=1)) ** 2 + (torch.sum(grad_d5, dim=1)) ** 2 + (torch.sum(grad_d6, dim=1)) ** 2 + EPSILON) ** 0.5)
 
-        return grad_magnitude
+        return grad_magnitude.view(B,1,H,W,D)
 
 
 class GMELoss3D(nn.Module):
@@ -136,25 +138,26 @@ class GMELoss3D(nn.Module):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     loss = GMELoss3D()
-    filter_ = GradEdge3D(k_gaussian=3, mu=0, sigma=1, n1=1, n2=2, n3=2)
+    filter_ = GradEdge3D(n1=1, n2=2, n3=2)
     for k in range(1, 5):
         path = 'R:/img (%d).pkl' % (k)  # '/brats/data/img (%d).pkl'%(k
         data = np.load(path, allow_pickle=True)
         x = torch.from_numpy(data[0]).view(
             1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(dtype=torch.float)
-        Y = filter_.detect(x, low_threshold=0.05, high_threshold=0.15)
+        Y = filter_.detect(x)
+        print(Y.shape)
         titles = ['grad_magnitude']
-        for j in range(0, 155, 20):
+        for j in range(0, 155, 1):
             for i, y in enumerate(Y):
                 if i == 0:
-                    cmap = 'bone'
-                elif i == 4 or i == 5:
                     cmap = 'hot'
+                elif i == 4 or i == 5:
+                    cmap = 'bone'
                 elif i == 6:
                     cmap = 'binary'
                 else:
                     cmap = 'PiYG'
-                plt.imshow(y[:, :, :, :, j].squeeze(
+                plt.imshow(y[0, :, :, j].squeeze(
                 ).cpu().detach().numpy().T, cmap=cmap)
                 plt.title(titles[i] + ' slice%d' % (j))
                 plt.show()
