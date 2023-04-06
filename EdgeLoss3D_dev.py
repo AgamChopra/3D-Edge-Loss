@@ -28,7 +28,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
               [[-n1, 0, n1],
                [-n2, 0, n2],
                [-n1, 0, n1]]]
-    
+
 
     Parameters
     ----------
@@ -67,6 +67,7 @@ class GradEdge3D():
     '''
     Sobel edge detection algorithm compatible with PyTorch Autograd engine.
     '''
+
     def __init__(self, n1=1, n2=2, n3=2, device='cpu'):
         super(GradEdge3D, self).__init__()
         self.device = device
@@ -115,6 +116,7 @@ class GMELoss3D(nn.Module):
     '''
     3D-Edge Loss for PyTorch with choice of criterion. Default is MSELoss.
     '''
+
     def __init__(self, criterion=nn.MSELoss(), n1=1, n2=2, n3=2, device='cpu'):
         super(GMELoss3D, self).__init__()
         self.edge_filter = GradEdge3D(n1, n2, n3, device)
@@ -128,21 +130,30 @@ class GMELoss3D(nn.Module):
 
 
 if __name__ == "__main__":
-    cmap = 'gray'
-    loss = GMELoss3D()
-    filter_ = GradEdge3D(n1=1, n2=2, n3=2)
+    device = 'cuda'
+    loss = GMELoss3D(device=device)
+    filter_ = GradEdge3D(n1=1, n2=2, n3=2, device=device)
+    plt.rcParams['figure.dpi'] = 150
 
     for k in range(1, 5):
-        x = torch.rand((1, 1, 150, 150, 20))
-        Y = [x, filter_.detect(x)]
-        print([y.shape for y in Y])
-        titles = ['input', 'grad_magnitude']
+        path = 'R:/img (%d).pkl' % (k)
+        data = np.load(path, allow_pickle=True)
+        x = torch.from_numpy(data[0]).view(
+            1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(device=device, dtype=torch.float)
+        y = filter_.detect(x)
+        x, y = (x - torch.min(x))/(torch.max(x) - torch.min(x)
+                                   ), (y - torch.min(y))/(torch.max(y) - torch.min(y))
+        Y = [x, y]
+        y = torch.cat([0.3 * Y[0], 0.3 * Y[0] + 0.7 * Y[1],
+                      0.3 * Y[0]], dim=1).squeeze().cpu().detach()
+        print(y.shape)
+        titles = ['input + grad_magnitude']
 
-        for j in range(0, 20, 1):
-            for i, y in enumerate(Y):
-                plt.imshow(y[0, 0, :, :, j].squeeze(
-                ).cpu().detach().numpy().T, cmap=cmap)
-                plt.title(titles[i] + ' slice %d' % (j))
-                plt.show()
+        for j in range(0, 150, 1):
+            out = y[:, :, :, j]
+            plt.imshow(out.numpy().squeeze().T)
+            plt.title(titles[0] + ' slice %d' % (j))
+            plt.show()
 
-    print('test_loss =', loss(x, x + 0.001 * torch.rand((1, 1, 150, 150, 20))))
+    print('test_loss =', loss(x, x + 0.001 *
+          torch.rand(x.shape).to(device=device, dtype=torch.float)))
