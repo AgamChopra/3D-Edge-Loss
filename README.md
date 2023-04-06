@@ -2,8 +2,9 @@
 <p>PyTorch code to implement a gradient magnitude based edge detection loss.</p>
 
 <p align="center">
-    <img width="400" height="400" src="https://github.com/AgamChopra/3D-Edge-Loss/blob/main/imgs/grad_mag.gif">   
-    <br><i>Fig. Map of the magnitude of the gradients.</i><br>  
+    <img width="300" height="300" src="https://github.com/AgamChopra/3D-Edge-Loss/blob/main/imgs/grad_mag.gif">   
+    <img width="300" height="300" src="https://github.com/AgamChopra/3D-Edge-Loss/blob/main/imgs/edges_fullsob_dev.gif">  
+    <br><i>Fig. Map of the magnitude of the gradients(Left-old). Map of the magnitude of the gradients with diagonal edges(Right-new/dev).</i><br>  
     <img width="300" height="300" src="https://github.com/AgamChopra/3D-Edge-Loss/blob/main/imgs/Figure%202022-07-12%20141758%20(42).png">
     <img width="300" height="300"src="https://github.com/AgamChopra/3D-Edge-Loss/blob/main/imgs/Figure%202022-07-12%20141758%20(43).png">
     <br><i>Fig. Input after 3D gaussian blur(Left). Gradient wrt x(Right)</i><br>   
