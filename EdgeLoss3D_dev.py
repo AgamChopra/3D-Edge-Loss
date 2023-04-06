@@ -9,6 +9,7 @@ Created on Tue Jul 10 2022
 import numpy as np
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 EPSILON = 1E-12
 
@@ -32,7 +33,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
     Sd31 = np.asarray([-S.T for S in Sd11.T])
     Sd32 = np.asarray([S.T for S in Sd12.T])
 
-    return Sx, Sy, Sz, [Sd11, Sd12, Sd21, Sd22, Sd31, Sd32]
+    return [Sx, Sy, Sz, Sd11, Sd12, Sd21, Sd22, Sd31, Sd32]
 
 
 class GradEdge3D():
@@ -40,85 +41,28 @@ class GradEdge3D():
         super(GradEdge3D, self).__init__()
         self.device = device
         k_sobel = 3
-        Sx, Sy, Sz, Sd = get_sobel_kernel3D(n1, n2, n3)
-        self.sobel_filter_x = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_x.weight.data = torch.from_numpy(
-            Sx.astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_y = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_y.weight.data = torch.from_numpy(
-            Sy.astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_z = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_z.weight.data = torch.from_numpy(
-            Sz.astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d1 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d1.weight.data = torch.from_numpy(
-            Sd[0].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d2 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d2.weight.data = torch.from_numpy(
-            Sd[1].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d3 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d3.weight.data = torch.from_numpy(
-            Sd[2].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d4 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d4.weight.data = torch.from_numpy(
-            Sd[3].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d5 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d5.weight.data = torch.from_numpy(
-            Sd[4].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-        self.sobel_filter_d6 = nn.Conv3d(
-            in_channels=1, out_channels=1, stride=1, kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-        self.sobel_filter_d6.weight.data = torch.from_numpy(
-            Sd[5].astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
+        S = get_sobel_kernel3D(n1, n2, n3)
+        self.sobel_filters = []
 
-        self.sobel_filter_x = self.sobel_filter_x.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_y = self.sobel_filter_y.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_z = self.sobel_filter_z.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d1 = self.sobel_filter_d1.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d2 = self.sobel_filter_d2.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d3 = self.sobel_filter_d3.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d4 = self.sobel_filter_d4.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d5 = self.sobel_filter_d5.to(
-            device, dtype=torch.float32)
-        self.sobel_filter_d6 = self.sobel_filter_d6.to(
-            device, dtype=torch.float32)
+        for s in S:
+            sobel_filter = nn.Conv3d(in_channels=1, out_channels=1, stride=1,
+                                     kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
+            sobel_filter.weight.data = torch.from_numpy(
+                s.astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
+            sobel_filter = sobel_filter.to(device, dtype=torch.float32)
+            self.sobel_filters.append(sobel_filter)
 
-    def detect(self, img):
+    def detect(self, img, a=1):
+        pad = (a, a, a, a, a, a)
         B, C, H, W, D = img.shape
-        grad_x, grad_y, grad_z, grad_d1, grad_d2, grad_d3, grad_d4, grad_d5, grad_d6 = [
-        ], [], [], [], [], [], [], [], []
 
-        for c in range(C):
-            grad_x.append(self.sobel_filter_x(img[:, c:c+1]))
-            grad_y.append(self.sobel_filter_y(img[:, c:c+1]))
-            grad_z.append(self.sobel_filter_z(img[:, c:c+1]))
-            grad_d1.append(self.sobel_filter_d1(img[:, c:c+1]))
-            grad_d2.append(self.sobel_filter_d2(img[:, c:c+1]))
-            grad_d3.append(self.sobel_filter_d3(img[:, c:c+1]))
-            grad_d4.append(self.sobel_filter_d4(img[:, c:c+1]))
-            grad_d5.append(self.sobel_filter_d5(img[:, c:c+1]))
-            grad_d6.append(self.sobel_filter_d6(img[:, c:c+1]))
-            
-        grad_x, grad_y, grad_z, grad_d1, grad_d2, grad_d3, grad_d4, grad_d5, grad_d6 = torch.cat(grad_x,dim = 1), torch.cat(grad_y, dim=1), torch.cat(grad_z, dim=1), torch.cat(grad_d1, dim=1), torch.cat(grad_d2, dim=1), torch.cat(grad_d3, dim=1), torch.cat(grad_d4, dim=1), torch.cat(grad_d5, dim=1), torch.cat(grad_d6, dim=1)
+        img = nn.functional.pad(img, pad, mode='reflect')
 
-        grad_magnitude = (1 / C) * (((torch.sum(grad_x, dim=1)) ** 2 + (torch.sum(grad_y, dim=1)) ** 2 + (torch.sum(grad_z, dim=1)) ** 2 + (torch.sum(grad_d1, dim=1)) ** 2 + (torch.sum(
-            grad_d2, dim=1)) ** 2 + (torch.sum(grad_d3, dim=1)) ** 2 + (torch.sum(grad_d4, dim=1)) ** 2 + (torch.sum(grad_d5, dim=1)) ** 2 + (torch.sum(grad_d6, dim=1)) ** 2 + EPSILON) ** 0.5)
+        grad_mag = (1 / C) * torch.sum(torch.stack([torch.sum(torch.cat([s(img[:, c:c+1])for c in range(
+            C)], dim=1), dim=1) ** 2 for s in self.sobel_filters], dim=1), dim=1) ** 0.5
+        grad_mag = grad_mag[:, a:-a, a:-a, a:-a]
 
-        return grad_magnitude.view(B,1,H,W,D)
+        return grad_mag.view(B, 1, H, W, D)
 
 
 class GMELoss3D(nn.Module):
@@ -136,21 +80,21 @@ class GMELoss3D(nn.Module):
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
     loss = GMELoss3D()
     filter_ = GradEdge3D(n1=1, n2=2, n3=2)
     for k in range(1, 5):
-        path = 'R:/img (%d).pkl' % (k)  # '/brats/data/img (%d).pkl'%(k
-        data = np.load(path, allow_pickle=True)
-        x = torch.from_numpy(data[0]).view(
-            1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(dtype=torch.float)
+        # path = 'R:/img (%d).pkl' % (k)  # '/brats/data/img (%d).pkl'%(k
+        #data = np.load(path, allow_pickle=True)
+        # x = torch.from_numpy(data[0]).view(
+        #    1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(dtype=torch.float)
+        x = torch.rand((1, 1, 150, 150, 20))
         Y = filter_.detect(x)
         print(Y.shape)
         titles = ['grad_magnitude']
-        for j in range(0, 155, 1):
+        for j in range(0, 20, 1):
             for i, y in enumerate(Y):
                 if i == 0:
-                    cmap = 'hot'
+                    cmap = 'gray'
                 elif i == 4 or i == 5:
                     cmap = 'bone'
                 elif i == 6:
