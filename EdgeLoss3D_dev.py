@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     for k in range(1, 5):
         path = 'R:/img (%d).pkl' % (k)
-        data = np.load(path, allow_pickle=True)
+        data = np.load(path, allow_pickle=True) # T1 and T2 combined(ie- 2 channel input). For single channel add [0:1] to the line after calling np.load
         x = torch.from_numpy(data[0]).view(
             1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(device=device, dtype=torch.float)
         y = filter_.detect(x)
