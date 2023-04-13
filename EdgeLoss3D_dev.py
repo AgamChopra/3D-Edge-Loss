@@ -4,21 +4,23 @@ Created on Tue Jul 10 2022
 Last Modified on Thu Apr 6 2023
 
 @author: Agamdeep Chopra, achopra4@uw.edu
-@affiliation: Department of Mechanical Engineering, University of Washington, Seattle WA
-@reference: Thevenot, A. (2022, February 17). Implement canny edge detection from scratch with PyTorch. Medium. Retrieved July 10, 2022, from https://towardsdatascience.com/implement-canny-edge-detection-from-scratch-with-pytorch-a1cccfa58bed 
+@affiliation: University of Washington, Seattle WA
+@reference: Thevenot, A. (2022, February 17). Implement canny edge detection
+            from scratch with PyTorch. Medium. Retrieved July 10, 2022, from
+            https://towardsdatascience.com/implement-canny-edge-detection-from-scratch-with-pytorch-a1cccfa58bed
 """
 import numpy as np
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-EPSILON = 1E-12
+EPSILON = 1E-6
 
 
 def get_sobel_kernel3D(n1=1, n2=2, n3=2):
     '''
     Returns 3D Sobel kernels Sx, Sy, Sz, and diagonal kernels
-    ex: 
+    ex:
         Sx = [[[-n1, 0, n1],
                [-n2, 0, n2],
                [-n1, 0, n1]],
@@ -106,7 +108,7 @@ class GradEdge3D():
         img = nn.functional.pad(img, pad, mode='reflect')
 
         grad_mag = (1 / C) * torch.sum(torch.stack([torch.sum(torch.cat([s(img[:, c:c+1])for c in range(
-            C)], dim=1), dim=1) ** 2 for s in self.sobel_filters], dim=1), dim=1) ** 0.5
+            C)], dim=1) + EPSILON, dim=1) ** 2 for s in self.sobel_filters], dim=1) + EPSILON, dim=1) ** 0.5
         grad_mag = grad_mag[:, a:-a, a:-a, a:-a]
 
         return grad_mag.view(B, 1, H, W, D)
@@ -137,7 +139,8 @@ if __name__ == "__main__":
 
     for k in range(1, 5):
         path = 'R:/img (%d).pkl' % (k)
-        data = np.load(path, allow_pickle=True) # T1 and T2 combined(ie- 2 channel input). For single channel add [0:1] to the line after calling np.load
+        # T1 and T2 combined(ie- 2 channel input). For single channel add [0:1] to the line after calling np.load
+        data = np.load(path, allow_pickle=True)
         x = torch.from_numpy(data[0]).view(
             1, 1, data[0].shape[0], data[0].shape[1], data[0].shape[2]).to(device=device, dtype=torch.float)
         y = filter_.detect(x)
