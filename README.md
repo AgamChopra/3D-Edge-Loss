@@ -16,4 +16,4 @@
     <br><i>Fig. Magnitude of gradients(Left). Filtered magnitude of gradients.(Right).</i><br>
 </p>
 
-<p><a href="https://raw.githubusercontent.com/AgamChopra/WGAN-GP/main/LICENSE" target="blank">[GNU AGPL3 License]</a></p>
+<p><a href="https://raw.githubusercontent.com/AgamChopra/3D-Edge-Loss/main/LICENSE" target="blank">[GNU AGPL3 License]</a></p>
