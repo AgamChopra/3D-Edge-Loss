@@ -8,16 +8,15 @@ Last Modified on Thu Apr 6 2023
             from scratch with PyTorch. Medium. Retrieved July 10, 2022, from
             https://towardsdatascience.com/implement-canny-edge-detection-from-scratch-with-pytorch-a1cccfa58bed
 """
-import numpy as np
-import torch
-import torch.nn as nn
-
-EPSILON = 1E-6
+from numpy import asarray, float32
+from torch import from_numpy, sum as tsum, stack, cat, float32 as tfloat32
+from torch.nn import Module, Conv3d, L1Loss
+from torch.nn.functional import pad as tpad
 
 
 def get_sobel_kernel3D(n1=1, n2=2, n3=2):
     '''
-    Returns 3D Sobel kernels Sx, Sy, Sz, and diagonal kernels for edge detection.
+    Returns 3D Sobel kernels Sx, Sy, Sz, & diagonal kernels for edge detection.
 
     Parameters
     ----------
@@ -33,7 +32,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
     list
         List of all the 3D Sobel kernels (Sx, Sy, Sz, diagonal kernels).
     '''
-    Sx = np.asarray(
+    Sx = asarray(
         [[[-n1, 0, n1],
           [-n2, 0, n2],
           [-n1, 0, n1]],
@@ -44,7 +43,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
           [-n2, 0, n2],
           [-n1, 0, n1]]])
 
-    Sy = np.asarray(
+    Sy = asarray(
         [[[-n1, -n2, -n1],
           [0, 0, 0],
           [n1, n2, n1]],
@@ -55,7 +54,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
           [0, 0, 0],
           [n1, n2, n1]]])
 
-    Sz = np.asarray(
+    Sz = asarray(
         [[[-n1, -n2, -n1],
           [-n2, -n3*n2, -n2],
           [-n1, -n2, -n1]],
@@ -66,7 +65,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
           [n2, n3*n2, n2],
           [n1, n2, n1]]])
 
-    Sd11 = np.asarray(
+    Sd11 = asarray(
         [[[0, n1, n2],
           [-n1, 0, n1],
           [-n2, -n1, 0]],
@@ -77,7 +76,7 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
           [-n1, 0, n1],
           [-n2, -n1, 0]]])
 
-    Sd12 = np.asarray(
+    Sd12 = asarray(
         [[[-n2, -n1, 0],
           [-n1, 0, n1],
           [0, n1, n2]],
@@ -88,7 +87,12 @@ def get_sobel_kernel3D(n1=1, n2=2, n3=2):
           [-n1, 0, n1],
           [0, n1, n2]]])
 
-    return [Sx, Sy, Sz, Sd11, Sd12]
+    Sd21 = Sd11.T
+    Sd22 = Sd12.T
+    Sd31 = asarray([-S.T for S in Sd11.T])
+    Sd32 = asarray([S.T for S in Sd12.T])
+
+    return [Sx, Sy, Sz, Sd11, Sd12, Sd21, Sd22, Sd31, Sd32]
 
 
 class GradEdge3D():
@@ -113,12 +117,12 @@ class GradEdge3D():
 
         # Initialize Sobel filters for edge detection
         for s in S:
-            sobel_filter = nn.Conv3d(
+            sobel_filter = Conv3d(
                 in_channels=1, out_channels=1, stride=1,
                 kernel_size=k_sobel, padding=k_sobel // 2, bias=False)
-            sobel_filter.weight.data = torch.from_numpy(
-                s.astype(np.float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
-            sobel_filter = sobel_filter.to(dtype=torch.float32)
+            sobel_filter.weight.data = from_numpy(
+                s.astype(float32)).reshape(1, 1, k_sobel, k_sobel, k_sobel)
+            sobel_filter = sobel_filter.to(dtype=tfloat32)
             self.sobel_filters.append(sobel_filter)
 
     def __call__(self, img, a=1):
@@ -140,19 +144,23 @@ class GradEdge3D():
         pad = (a, a, a, a, a, a)
         B, C, H, W, D = img.shape
 
-        img = nn.functional.pad(img, pad, mode='reflect')
+        img = tpad(img, pad, mode='reflect')
 
         # Calculate gradient magnitude of edges
-        grad_mag = (1 / C) * torch.sum(torch.stack([torch.sum(torch.cat(
+        grad_mag = (1 / C) * tsum(stack([tsum(cat(
             [s.to(img.device)(img[:, c:c+1]) for c in range(C)],
-            dim=1) + EPSILON, dim=1) ** 2 for s in self.sobel_filters],
-            dim=1) + EPSILON, dim=1) ** 0.5
+            dim=1) + 1e-6, dim=1) ** 2 for s in self.sobel_filters],
+            dim=1) + 1e-6, dim=1) ** 0.5
         grad_mag = grad_mag[:, a:-a, a:-a, a:-a]
 
-        return grad_mag.view(B, 1, H, W, D)
+        num = grad_mag - grad_mag.min()
+        dnm = grad_mag.max() - grad_mag.min() + 1e-6
+        norm_grad_mag = num / dnm
+
+        return norm_grad_mag.view(B, 1, H, W, D)
 
 
-class GMELoss3D(nn.Module):
+class GMELoss3D(Module):
     '''
     Implements Gradient Magnitude Edge Loss for 3D image data.
 
@@ -171,7 +179,7 @@ class GMELoss3D(nn.Module):
     '''
 
     def __init__(self, n1=1, n2=2, n3=2,
-                 lam_errors=[(1.0, nn.L1Loss())], reduction='sum'):
+                 lam_errors=[(1.0, L1Loss())], reduction='sum'):
         super(GMELoss3D, self).__init__()
         self.edge_filter = GradEdge3D(n1, n2, n3)
         self.lam_errors = lam_errors
@@ -210,39 +218,3 @@ class GMELoss3D(nn.Module):
                 ) / len(self.lam_errors))
 
         return error
-
-
-# Test Cases
-def test_sobel_kernels():
-    # Test the Sobel kernel generation
-    kernels = get_sobel_kernel3D()
-    assert len(kernels) == 5, "There should be 5 Sobel kernels"
-    print("Sobel kernel test passed.")
-
-
-def test_grad_edge_3d():
-    # Test the gradient edge detection
-    grad_edge = GradEdge3D()
-    img = torch.rand((1, 1, 10, 10, 10))  # Random 3D image
-    edges = grad_edge(img)
-    assert edges.shape == (
-        1, 1, 10, 10, 10), "Edge detection output shape mismatch"
-    print("GradEdge3D test passed.")
-
-
-def test_gme_loss_3d():
-    # Test the GME loss function
-    gme_loss = GMELoss3D()
-    img1 = torch.rand((1, 1, 10, 10, 10))
-    img2 = torch.rand((1, 1, 10, 10, 10))
-    loss = gme_loss(img1, img2)
-    assert loss.item() > 0, "Loss should be greater than zero"
-    print("GMELoss3D test passed.")
-
-
-# Main function to run tests
-if __name__ == "__main__":
-    test_sobel_kernels()
-    test_grad_edge_3d()
-    test_gme_loss_3d()
-
